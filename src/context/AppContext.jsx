@@ -2,15 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AppContext = createContext();
 
-const getApiBase = () => {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL.replace(/\/$/, '');
-  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    return 'http://localhost:8000';
-  }
-  return 'https://vexta-api.nexusec.space';
-};
-
-const API_BASE = getApiBase();
 const DOWNLOAD_API_BASE = (import.meta.env.VITE_DOWNLOAD_API_URL || 'https://downloads.nexusec.space').replace(/\/$/, '');
 
 const DEFAULT_ANNOUNCEMENT = {
@@ -41,17 +32,16 @@ const safeJsonParse = async (res) => {
 };
 
 export function AppProvider({ children }) {
-  const [bridgeName, setBridgeName] = useState('Vexta Bridge');
-  const [bridgeDescription, setBridgeDescription] = useState('A privacy-first, zero-knowledge Vexta relay bridge.');
-  const [fingerprint, setFingerprint] = useState(null);
-  const [fingerprintFmt, setFingerprintFmt] = useState(null);
-  const [keyGeneratedAt, setKeyGeneratedAt] = useState(null);
+  const bridgeName = 'Vexta Bridge';
+  const bridgeDescription = 'A privacy-first, zero-knowledge Vexta relay bridge.';
+  const fingerprint = null;
+  const fingerprintFmt = null;
+  const keyGeneratedAt = null;
   const [hasIdentity, setHasIdentity] = useState(false);
-  const [totalUsers, setTotalUsers] = useState(0);
-  const [onlineUsers, setOnlineUsers] = useState(0);
-  const [uptime, setUptime] = useState('0h 0m 0s');
-
-  const [announcements, setAnnouncements] = useState([]);
+  const totalUsers = 0;
+  const onlineUsers = 0;
+  const uptime = '0h 0m 0s';
+  const announcements = [DEFAULT_ANNOUNCEMENT];
   const [clientDownloads, setClientDownloads] = useState([]);
   const [olderDownloads, setOlderDownloads] = useState([]);
   const [allReleases, setAllReleases] = useState([]);
@@ -151,37 +141,7 @@ export function AppProvider({ children }) {
   };
 
   useEffect(() => {
-    async function fetchBridgeData() {
-      // 1. Fetch System Info from Vexta API
-      try {
-        let infoRes = await fetch(`${API_BASE}/api/info`);
-        let info = await safeJsonParse(infoRes);
-        if (!info && API_BASE !== 'http://localhost:8000') {
-          try {
-            infoRes = await fetch('http://localhost:8000/api/info');
-            info = await safeJsonParse(infoRes);
-          } catch {}
-        }
-        if (info) {
-          setBridgeName(info.bridge_name || 'Vexta Bridge');
-          setBridgeDescription(info.bridge_description || '');
-          setUptime(info.uptime || '0h 0m 0s');
-          if (info.stats) {
-            setTotalUsers(info.stats.total_users || 0);
-            setOnlineUsers(info.stats.online_users || 0);
-          }
-          if (info.identity) {
-            setHasIdentity(info.identity.has_identity || false);
-            setFingerprint(info.identity.fingerprint || null);
-            setFingerprintFmt(info.identity.fingerprint_fmt || null);
-            setKeyGeneratedAt(info.identity.key_generated_at || null);
-          }
-        }
-      } catch (infoErr) {
-        console.warn('Vexta API info endpoint unreachable or Cloudflare challenge active:', infoErr);
-      }
-
-      // 2. Fetch Historical Releases & Latest Downloads
+    async function fetchDownloads() {
       try {
         let releasesRes = await fetch(`${DOWNLOAD_API_BASE}/api/v1/apps/vexta/releases`);
         let releasesData = await safeJsonParse(releasesRes);
@@ -216,46 +176,13 @@ export function AppProvider({ children }) {
           }
         }
       } catch (dlErr) {
-        console.warn('Centralized downloads server unreachable, falling back to bridge API:', dlErr);
-        try {
-          const dlRes = await fetch(`${API_BASE}/api/downloads`);
-          const dlData = await safeJsonParse(dlRes);
-          if (dlData) {
-            setClientDownloads(dlData.downloads || []);
-            setOlderDownloads(dlData.older_downloads || []);
-            setLatestClientVersion(dlData.latest_version || null);
-            if (dlData.latest_version) {
-              setAvailableVersions([dlData.latest_version]);
-              setSelectedVersion(dlData.latest_version);
-            }
-          }
-        } catch {}
+        console.warn('Centralized downloads server unreachable:', dlErr);
+      } finally {
+        setLoading(false);
       }
-
-      // 3. Fetch Announcements Feed
-      try {
-        let annRes = await fetch(`${API_BASE}/api/announcements`);
-        let annData = await safeJsonParse(annRes);
-        if (!annData && API_BASE !== 'http://localhost:8000') {
-          try {
-            annRes = await fetch('http://localhost:8000/api/announcements');
-            annData = await safeJsonParse(annRes);
-          } catch {}
-        }
-        if (annData) {
-          const list = Array.isArray(annData) ? annData : (annData.announcements || []);
-          setAnnouncements(list.length > 0 ? list : [DEFAULT_ANNOUNCEMENT]);
-        } else {
-          setAnnouncements([DEFAULT_ANNOUNCEMENT]);
-        }
-      } catch {
-        setAnnouncements([DEFAULT_ANNOUNCEMENT]);
-      }
-
-      setLoading(false);
     }
 
-    fetchBridgeData();
+    fetchDownloads();
   }, []);
 
   return (
@@ -282,7 +209,7 @@ export function AppProvider({ children }) {
         latestClientVersion,
         latestClientBuild,
         loading,
-        apiBaseUrl: API_BASE,
+        apiBaseUrl: '',
         downloadApiBaseUrl: DOWNLOAD_API_BASE
       }}
     >
