@@ -12,7 +12,7 @@ import PrivacyPage from './pages/PrivacyPage';
 import TermsPage from './pages/TermsPage';
 import Error404Page from './pages/Error404Page';
 import Error500Page from './pages/Error500Page';
-import CookieBanner from './components/CookieBanner';
+import PrivacyNotice from './components/PrivacyNotice';
 
 export default function App() {
   return (
@@ -43,7 +43,7 @@ export default function App() {
 
           {/* Footer */}
           <Footer />
-          <CookieBanner />
+          <PrivacyNotice />
         </div>
       </Router>
     </AppProvider>
