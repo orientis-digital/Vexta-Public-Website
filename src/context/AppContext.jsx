@@ -49,6 +49,7 @@ export function AppProvider({ children }) {
   const [selectedVersion, setSelectedVersion] = useState(null);
   const [latestClientVersion, setLatestClientVersion] = useState(null);
   const [latestClientBuild, setLatestClientBuild] = useState(null);
+  const [downloadError, setDownloadError] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const detectPlatform = (art) => {
@@ -140,48 +141,53 @@ export function AppProvider({ children }) {
     }
   };
 
-  useEffect(() => {
-    async function fetchDownloads() {
-      try {
-        let releasesRes = await fetch(`${DOWNLOAD_API_BASE}/api/v1/apps/vexta/releases`);
-        let releasesData = await safeJsonParse(releasesRes);
+  const fetchDownloads = async () => {
+    setLoading(true);
+    setDownloadError(null);
+    try {
+      let releasesRes = await fetch(`${DOWNLOAD_API_BASE}/api/v1/apps/vexta/releases`);
+      let releasesData = await safeJsonParse(releasesRes);
 
-        if (releasesData && releasesData.releases && releasesData.releases.length > 0) {
-          const releases = releasesData.releases;
-          setAllReleases(releases);
-          const versions = releases.map((r) => r.latest_version || r.version);
-          setAvailableVersions(versions);
-          const latestVer = versions[0];
-          const latestBld = releases[0]?.latest_build || 0;
-          setLatestClientVersion(latestVer);
-          setLatestClientBuild(latestBld);
-          setSelectedVersion(latestVer);
-          setClientDownloads(parseReleaseArtifacts(releases[0]));
+      if (releasesData && releasesData.releases && releasesData.releases.length > 0) {
+        const releases = releasesData.releases;
+        setAllReleases(releases);
+        const versions = releases.map((r) => r.latest_version || r.version);
+        setAvailableVersions(versions);
+        const latestVer = versions[0];
+        const latestBld = releases[0]?.latest_build || 0;
+        setLatestClientVersion(latestVer);
+        setLatestClientBuild(latestBld);
+        setSelectedVersion(latestVer);
+        setClientDownloads(parseReleaseArtifacts(releases[0]));
 
-          const older = releases.slice(1).flatMap((r) => parseReleaseArtifacts(r));
-          setOlderDownloads(older);
+        const older = releases.slice(1).flatMap((r) => parseReleaseArtifacts(r));
+        setOlderDownloads(older);
+      } else {
+        // Fallback to /latest endpoint
+        const dlRes = await fetch(`${DOWNLOAD_API_BASE}/api/v1/apps/vexta/releases/latest`);
+        const dlData = await safeJsonParse(dlRes);
+        if (dlData && (dlData.artifacts || dlData.downloads)) {
+          const ver = dlData.latest_version || dlData.version || '0.0.11';
+          const bld = dlData.latest_build || 0;
+          setLatestClientVersion(ver);
+          setLatestClientBuild(bld);
+          setSelectedVersion(ver);
+          setAvailableVersions([ver]);
+          setAllReleases([dlData]);
+          setClientDownloads(parseReleaseArtifacts(dlData));
         } else {
-          // Fallback to /latest endpoint
-          const dlRes = await fetch(`${DOWNLOAD_API_BASE}/api/v1/apps/vexta/releases/latest`);
-          const dlData = await safeJsonParse(dlRes);
-          if (dlData) {
-            const ver = dlData.latest_version || '0.0.11';
-            const bld = dlData.latest_build || 0;
-            setLatestClientVersion(ver);
-            setLatestClientBuild(bld);
-            setSelectedVersion(ver);
-            setAvailableVersions([ver]);
-            setAllReleases([dlData]);
-            setClientDownloads(parseReleaseArtifacts(dlData));
-          }
+          throw new Error('Unable to retrieve client release manifests or package binaries.');
         }
-      } catch (dlErr) {
-        console.warn('Centralized downloads server unreachable:', dlErr);
-      } finally {
-        setLoading(false);
       }
+    } catch (dlErr) {
+      console.warn('Centralized downloads server unreachable:', dlErr);
+      setDownloadError(dlErr?.message || 'Centralized downloads server is currently unreachable.');
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
     fetchDownloads();
   }, []);
 
@@ -208,6 +214,8 @@ export function AppProvider({ children }) {
         selectReleaseByVersion,
         latestClientVersion,
         latestClientBuild,
+        downloadError,
+        retryFetchDownloads: fetchDownloads,
         loading,
         apiBaseUrl: '',
         downloadApiBaseUrl: DOWNLOAD_API_BASE

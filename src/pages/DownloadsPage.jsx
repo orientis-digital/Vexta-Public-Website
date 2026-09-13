@@ -15,6 +15,8 @@ export default function DownloadsPage() {
     selectReleaseByVersion,
     latestClientVersion,
     latestClientBuild,
+    downloadError,
+    retryFetchDownloads,
     loading,
     downloadApiBaseUrl,
   } = useApp();
@@ -24,6 +26,7 @@ export default function DownloadsPage() {
   const [verifyHashInput, setVerifyHashInput] = useState('');
   const [showArchive, setShowArchive] = useState(false);
   const [showVerifier, setShowVerifier] = useState(false);
+  const [downloadAttemptFailed, setDownloadAttemptFailed] = useState(false);
 
   // Auto-detect visitor operating system on mount
   useEffect(() => {
@@ -53,7 +56,11 @@ export default function DownloadsPage() {
   );
 
   const triggerDownload = (dl) => {
-    if (!dl) return;
+    if (!dl) {
+      setDownloadAttemptFailed(true);
+      setTimeout(() => setDownloadAttemptFailed(false), 5000);
+      return;
+    }
     try {
       confetti({
         particleCount: 75,
@@ -191,6 +198,45 @@ export default function DownloadsPage() {
             </div>
           </BentoCard>
         </div>
+      ) : downloadError ? (
+        /* DOWNLOADS SERVER QUERY FAILURE STATE - ONLY SHOW THIS CARD */
+        <div className="flex flex-col gap-8 animate-in fade-in duration-300">
+          <BentoCard
+            hover={false}
+            className="p-8 md:p-12 border-red-500/50 bg-[#0E0707] shadow-[0_10px_35px_rgba(239,68,68,0.2)] flex flex-col md:flex-row items-start md:items-center justify-between gap-6"
+          >
+            <div className="flex items-start gap-5">
+              <div className="w-16 h-16 rounded-2xl bg-red-500/15 border border-red-500/40 flex items-center justify-center text-red-400 text-3xl shrink-0 shadow-lg">
+                <i className="fa-solid fa-triangle-exclamation animate-pulse"></i>
+              </div>
+              <div className="flex flex-col gap-2 text-left">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-lg md:text-xl font-mono font-bold text-white uppercase tracking-wider">
+                    Downloads Server Unreachable
+                  </span>
+                  <StatusBadge label="OFFLINE // MIRROR UNAVAILABLE" variant="red" pulse={true} />
+                </div>
+                <p className="text-xs md:text-sm text-gray-300 font-sans leading-relaxed max-w-2xl">
+                  Unable to retrieve official client release manifests and signed checksums from the distribution mirror. The release server may be temporarily offline or unreachable.
+                </p>
+                <span className="text-xs font-mono text-red-400/90">
+                  Diagnostics: {downloadError}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
+              <button
+                onClick={() => retryFetchDownloads()}
+                disabled={loading}
+                className="w-full md:w-auto px-6 py-3.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-white border border-red-500/40 hover:border-red-500 rounded-xl font-mono text-xs md:text-sm font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2.5 shadow-md select-none"
+              >
+                <i className={`fa-solid fa-rotate-right ${loading ? 'fa-spin text-red-400' : ''}`}></i>
+                <span>{loading ? 'Reconnecting...' : 'Retry Connection'}</span>
+              </button>
+            </div>
+          </BentoCard>
+        </div>
       ) : (
         /* LOADED STATE WITH BENTO CARDS */
         <div className="flex flex-col gap-10 animate-in fade-in duration-300">
@@ -258,12 +304,31 @@ export default function DownloadsPage() {
             {/* Action Button & Hash Pill */}
             <div className="flex flex-col items-center md:items-end gap-3.5 w-full md:w-auto shrink-0">
               <button
-                onClick={() => triggerDownload(primary.target)}
-                className="w-full md:w-auto px-8 py-4 bg-[#22C55E] hover:bg-[#39FF14] text-black font-extrabold text-sm md:text-base uppercase tracking-widest rounded-xl hover:shadow-[0_0_30px_rgba(57,255,20,0.5)] hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 shadow-lg select-none border border-[#39FF14]"
+                onClick={() => {
+                  if (!primary.target) {
+                    retryFetchDownloads();
+                    setDownloadAttemptFailed(true);
+                    setTimeout(() => setDownloadAttemptFailed(false), 5000);
+                  } else {
+                    triggerDownload(primary.target);
+                  }
+                }}
+                className={`w-full md:w-auto px-8 py-4 font-extrabold text-sm md:text-base uppercase tracking-widest rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 shadow-lg select-none ${
+                  primary.target
+                    ? 'bg-[#22C55E] hover:bg-[#39FF14] text-black hover:shadow-[0_0_30px_rgba(57,255,20,0.5)] hover:-translate-y-0.5 border border-[#39FF14]'
+                    : 'bg-[#180D0D] hover:bg-[#241212] text-red-400 border border-red-500/40'
+                }`}
               >
-                <i className="fa-solid fa-download text-base"></i>
-                <span>Download {primary.typeLabel.split(' ')[0]}</span>
+                <i className={`fa-solid ${primary.target ? 'fa-download text-base' : 'fa-cloud-slash text-base'}`}></i>
+                <span>{primary.target ? `Download ${primary.typeLabel.split(' ')[0]}` : 'Mirror Offline • Retry'}</span>
               </button>
+
+              {downloadAttemptFailed && !primary.target && (
+                <div className="text-xs font-mono text-red-400 flex items-center gap-1.5 animate-in fade-in">
+                  <i className="fa-solid fa-circle-exclamation"></i>
+                  <span>Release binary unavailable. Re-attempting repository sync...</span>
+                </div>
+              )}
 
               {primary.target?.sha256 && (
                 <CopyPill
@@ -344,6 +409,12 @@ export default function DownloadsPage() {
                       </button>
                     </div>
                   )}
+                  {!winSetup && !winPortable && !winMsi && (
+                    <div className="text-xs font-mono text-[#7E927F] py-1 flex items-center gap-2">
+                      <i className="fa-solid fa-triangle-exclamation text-yellow-500/80"></i>
+                      <span>Windows packages unavailable from mirror</span>
+                    </div>
+                  )}
                 </div>
               </BentoCard>
 
@@ -377,8 +448,9 @@ export default function DownloadsPage() {
                       </button>
                     </div>
                   ) : (
-                    <div className="text-xs font-mono text-[#7E927F] py-1">
-                      Build available in release directory
+                    <div className="text-xs font-mono text-[#7E927F] py-1 flex items-center gap-2">
+                      <i className="fa-solid fa-triangle-exclamation text-yellow-500/80"></i>
+                      <span>Android build unavailable from mirror</span>
                     </div>
                   )}
                 </div>
@@ -423,8 +495,9 @@ export default function DownloadsPage() {
                     </div>
                   )}
                   {!latestAppImage && !latestDeb && (
-                    <div className="text-xs font-mono text-[#7E927F] py-1">
-                      Build available on request
+                    <div className="text-xs font-mono text-[#7E927F] py-1 flex items-center gap-2">
+                      <i className="fa-solid fa-triangle-exclamation text-yellow-500/80"></i>
+                      <span>Linux packages unavailable from mirror</span>
                     </div>
                   )}
                 </div>
